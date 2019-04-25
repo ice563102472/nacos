@@ -12,11 +12,26 @@
  */
 
 import React from 'react';
+import PropTypes from 'prop-types';
 import { request } from '../../../globalLib';
-import { Dialog, Form, Input, Switch, Message } from '@alifd/next';
-import { I18N, DIALOG_FORM_LAYOUT } from './constant';
+import { Dialog, Form, Input, Switch, Message, ConfigProvider } from '@alifd/next';
+import { DIALOG_FORM_LAYOUT, METADATA_ENTER, METADATA_SEPARATOR } from './constant';
+import MonacoEditor from 'components/MonacoEditor';
+import { replaceEnter, processMetaData } from 'utils/nacosutil';
 
+@ConfigProvider.config
 class EditInstanceDialog extends React.Component {
+  static displayName = 'EditInstanceDialog';
+
+  static propTypes = {
+    serviceName: PropTypes.string,
+    clusterName: PropTypes.string,
+    openLoading: PropTypes.string,
+    closeLoading: PropTypes.string,
+    getInstanceList: PropTypes.func,
+    locale: PropTypes.object,
+  };
+
   constructor(props) {
     super(props);
     this.state = {
@@ -30,9 +45,7 @@ class EditInstanceDialog extends React.Component {
     let editInstance = _editInstance;
     const { metadata = {} } = editInstance;
     if (Object.keys(metadata).length) {
-      editInstance.metadataText = Object.keys(metadata)
-        .map(k => `${k}=${metadata[k]}`)
-        .join(',');
+      editInstance.metadataText = processMetaData(METADATA_ENTER)(metadata);
     }
     this.setState({ editInstance, editInstanceDialogVisible: true });
   }
@@ -43,11 +56,20 @@ class EditInstanceDialog extends React.Component {
 
   onConfirm() {
     const { serviceName, clusterName, getInstanceList, openLoading, closeLoading } = this.props;
-    const { ip, port, weight, enabled, metadataText } = this.state.editInstance;
+    const { ip, port, ephemeral, weight, enabled, metadataText } = this.state.editInstance;
     request({
-      method: 'POST',
-      url: '/nacos/v1/ns/instance/update',
-      data: { serviceName, clusterName, ip, port, weight, enable: enabled, metadata: metadataText },
+      method: 'PUT',
+      url: 'v1/ns/instance',
+      data: {
+        serviceName,
+        clusterName,
+        ip,
+        port,
+        ephemeral,
+        weight,
+        enable: enabled,
+        metadata: replaceEnter(METADATA_SEPARATOR)(metadataText),
+      },
       dataType: 'text',
       beforeSend: () => openLoading(),
       success: res => {
@@ -58,6 +80,7 @@ class EditInstanceDialog extends React.Component {
         this.hide();
         getInstanceList();
       },
+      error: e => Message.error(e.responseText || 'error'),
       complete: () => closeLoading(),
     });
   }
@@ -70,11 +93,13 @@ class EditInstanceDialog extends React.Component {
   }
 
   render() {
+    const { locale = {} } = this.props;
     const { editInstanceDialogVisible, editInstance } = this.state;
     return (
       <Dialog
         className="instance-edit-dialog"
-        title={I18N.UPDATE_INSTANCE}
+        title={locale.updateInstance}
+        style={{ width: 600 }}
         visible={editInstanceDialogVisible}
         onOk={() => this.onConfirm()}
         onCancel={() => this.hide()}
@@ -84,25 +109,27 @@ class EditInstanceDialog extends React.Component {
           <Form.Item label="IP:">
             <p>{editInstance.ip}</p>
           </Form.Item>
-          <Form.Item label={`${I18N.PORT}:`}>
+          <Form.Item label={`${locale.port}:`}>
             <p>{editInstance.port}</p>
           </Form.Item>
-          <Form.Item label={`${I18N.WEIGHT}:`}>
+          <Form.Item label={`${locale.weight}:`}>
             <Input
               className="in-text"
               value={editInstance.weight}
               onChange={weight => this.onChangeCluster({ weight })}
             />
           </Form.Item>
-          <Form.Item label={`${I18N.WHETHER_ONLINE}:`}>
+          <Form.Item label={`${locale.whetherOnline}:`}>
             <Switch
               checked={editInstance.enabled}
               onChange={enabled => this.onChangeCluster({ enabled })}
             />
           </Form.Item>
-          <Form.Item label={`${I18N.METADATA}:`}>
-            <Input
-              className="in-text"
+          <Form.Item label={`${locale.metadata}:`}>
+            <MonacoEditor
+              language={'properties'}
+              width={'100%'}
+              height={200}
               value={editInstance.metadataText}
               onChange={metadataText => this.onChangeCluster({ metadataText })}
             />

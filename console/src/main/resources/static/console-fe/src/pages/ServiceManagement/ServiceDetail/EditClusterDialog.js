@@ -12,11 +12,24 @@
  */
 
 import React from 'react';
+import PropTypes from 'prop-types';
 import { request } from '../../../globalLib';
-import { Dialog, Form, Input, Switch, Select, Message } from '@alifd/next';
-import { I18N, DIALOG_FORM_LAYOUT } from './constant';
+import { Dialog, Form, Input, Switch, Select, Message, ConfigProvider } from '@alifd/next';
+import { DIALOG_FORM_LAYOUT, METADATA_SEPARATOR, METADATA_ENTER } from './constant';
+import MonacoEditor from 'components/MonacoEditor';
+import { replaceEnter, processMetaData } from 'utils/nacosutil';
 
+@ConfigProvider.config
 class EditClusterDialog extends React.Component {
+  static displayName = 'EditClusterDialog';
+
+  static propTypes = {
+    openLoading: PropTypes.func,
+    closeLoading: PropTypes.func,
+    getServiceDetail: PropTypes.func,
+    locale: PropTypes.object,
+  };
+
   constructor(props) {
     super(props);
     this.state = {
@@ -29,9 +42,7 @@ class EditClusterDialog extends React.Component {
   show(_editCluster) {
     let editCluster = _editCluster;
     const { metadata = {} } = editCluster;
-    editCluster.metadataText = Object.keys(metadata)
-      .map(k => `${k}=${metadata[k]}`)
-      .join(',');
+    editCluster.metadataText = processMetaData(METADATA_ENTER)(metadata);
     this.setState({
       editCluster,
       editClusterDialogVisible: true,
@@ -53,12 +64,12 @@ class EditClusterDialog extends React.Component {
       healthChecker,
     } = this.state.editCluster;
     request({
-      method: 'POST',
-      url: '/nacos/v1/ns/cluster/update',
+      method: 'PUT',
+      url: 'v1/ns/cluster',
       data: {
         serviceName,
         clusterName: name,
-        metadata: metadataText,
+        metadata: replaceEnter(METADATA_SEPARATOR)(metadataText),
         checkPort: defaultCheckPort,
         useInstancePort4Check: useIPPort4Check,
         healthChecker: JSON.stringify(healthChecker),
@@ -85,6 +96,8 @@ class EditClusterDialog extends React.Component {
   }
 
   render() {
+    const { locale = {} } = this.props;
+    const { updateCluster, checkType, checkPort, useIpPortCheck, checkPath, checkHeaders } = locale;
     const { editCluster = {}, editClusterDialogVisible } = this.state;
     const {
       healthChecker = {},
@@ -100,14 +113,15 @@ class EditClusterDialog extends React.Component {
     return (
       <Dialog
         className="cluster-edit-dialog"
-        title={I18N.UPDATE_CLUSTER}
+        style={{ width: 600 }}
+        title={updateCluster}
         visible={editClusterDialogVisible}
         onOk={() => this.onConfirm()}
         onCancel={() => this.hide()}
         onClose={() => this.hide()}
       >
         <Form {...DIALOG_FORM_LAYOUT}>
-          <Form.Item label={`${I18N.CHECK_TYPE}:`}>
+          <Form.Item label={`${checkType}:`}>
             <Select
               className="in-select"
               defaultValue={type}
@@ -115,52 +129,43 @@ class EditClusterDialog extends React.Component {
             >
               <Select.Option value="TCP">TCP</Select.Option>
               <Select.Option value="HTTP">HTTP</Select.Option>
+              <Select.Option value="NONE">NONE</Select.Option>
             </Select>
           </Form.Item>
-          <Form.Item label={`${I18N.CHECK_PORT}:`}>
+          <Form.Item label={`${checkPort}:`}>
             <Input
               className="in-text"
               value={defaultCheckPort}
               onChange={defaultCheckPort => this.onChangeCluster({ defaultCheckPort })}
             />
           </Form.Item>
-          <Form.Item label={`${I18N.USE_IP_PORT_CHECK}:`}>
+          <Form.Item label={`${useIpPortCheck}:`}>
             <Switch
               checked={useIPPort4Check}
               onChange={useIPPort4Check => this.onChangeCluster({ useIPPort4Check })}
             />
           </Form.Item>
-          {type === 'HTTP' ? (
-            <div>
-              <div className="next-row next-form-item next-left next-medium">
-                <div className="next-col next-col-fixed-12 next-form-item-label">
-                  <label>{`${I18N.CHECK_PATH}:`}</label>
-                </div>
-                <div className="next-col next-col-12 next-form-item-control">
-                  <Input
-                    className="in-text"
-                    value={path}
-                    onChange={path => healthCheckerChange({ path })}
-                  />
-                </div>
-              </div>
-              <div className="next-row next-form-item next-left next-medium">
-                <div className="next-col next-col-fixed-12 next-form-item-label">
-                  <label>{`${I18N.CHECK_HEADERS}:`}</label>
-                </div>
-                <div className="next-col next-col-12 next-form-item-control">
-                  <Input
-                    className="in-text"
-                    value={headers}
-                    onChange={headers => healthCheckerChange({ headers })}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-          <Form.Item label={`${I18N.METADATA}:`}>
-            <Input
-              className="in-text"
+          {type === 'HTTP' && [
+            <Form.Item label={`${checkPath}:`}>
+              <Input
+                className="in-text"
+                value={path}
+                onChange={path => healthCheckerChange({ path })}
+              />
+            </Form.Item>,
+            <Form.Item label={`${checkHeaders}:`}>
+              <Input
+                className="in-text"
+                value={headers}
+                onChange={headers => healthCheckerChange({ headers })}
+              />
+            </Form.Item>,
+          ]}
+          <Form.Item label={`${locale.metadata}:`}>
+            <MonacoEditor
+              language={'properties'}
+              width={'100%'}
+              height={200}
               value={metadataText}
               onChange={metadataText => this.onChangeCluster({ metadataText })}
             />
