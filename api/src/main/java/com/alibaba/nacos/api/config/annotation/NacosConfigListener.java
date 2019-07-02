@@ -17,6 +17,7 @@ package com.alibaba.nacos.api.config.annotation;
 
 import com.alibaba.nacos.api.annotation.NacosProperties;
 import com.alibaba.nacos.api.common.Constants;
+import com.alibaba.nacos.api.config.ConfigType;
 import com.alibaba.nacos.api.config.convert.NacosConfigConverter;
 
 import java.lang.annotation.*;
@@ -49,6 +50,13 @@ public @interface NacosConfigListener {
     String dataId();
 
     /**
+     * Nacos Config type
+     *
+     * @return "properties"
+     */
+    ConfigType type() default ConfigType.PROPERTIES;
+
+    /**
      * Specify {@link NacosConfigConverter Nacos configuraion convertor} class to convert target type instance.
      *
      * @return The implementation class of {@link NacosConfigConverter}
@@ -56,8 +64,7 @@ public @interface NacosConfigListener {
     Class<? extends NacosConfigConverter> converter() default NacosConfigConverter.class;
 
     /**
-     * The {@link NacosProperties} attribute, If not specified, it will use
-     * global Nacos Properties.
+     * The {@link NacosProperties} attribute, If not specified, it will use global Nacos Properties.
      *
      * @return the default value is {@link NacosProperties}
      */

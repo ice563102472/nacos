@@ -12,13 +12,15 @@
  */
 
 import React from 'react';
-import { request } from '../../../globalLib';
-import { Button, Card, Form, Loading } from '@alifd/next';
+import PropTypes from 'prop-types';
+import { request } from '@/globalLib';
+import { Input, Button, Card, ConfigProvider, Form, Loading, Message } from '@alifd/next';
 import EditServiceDialog from './EditServiceDialog';
 import EditClusterDialog from './EditClusterDialog';
 import InstanceTable from './InstanceTable';
 import { getParameter } from 'utils/nacosutil';
-import { I18N } from './constant';
+import MonacoEditor from 'components/MonacoEditor';
+import { MONACO_READONLY_OPTIONS, METADATA_ENTER } from './constant';
 import './ServiceDetail.scss';
 
 const FormItem = Form.Item;
@@ -27,11 +29,23 @@ const pageFormLayout = {
   wrapperCol: { span: 14 },
 };
 
+@ConfigProvider.config
 class ServiceDetail extends React.Component {
+  static displayName = 'ServiceDetail';
+
+  static propTypes = {
+    locale: PropTypes.object,
+    history: PropTypes.object,
+    location: PropTypes.object,
+  };
+
   constructor(props) {
     super(props);
+    this.editServiceDialog = React.createRef();
+    this.editClusterDialog = React.createRef();
     this.state = {
       serviceName: getParameter(props.location.search, 'name'),
+      groupName: getParameter(props.location.search, 'groupName'),
       loading: false,
       currentPage: 1,
       clusters: [],
@@ -51,11 +65,12 @@ class ServiceDetail extends React.Component {
   }
 
   getServiceDetail() {
-    const { serviceName } = this.state;
+    const { serviceName, groupName } = this.state;
     request({
-      url: `v1/ns/catalog/serviceDetail?serviceName=${serviceName}`,
+      url: `v1/ns/catalog/service?serviceName=${serviceName}&groupName=${groupName}`,
       beforeSend: () => this.openLoading(),
       success: ({ clusters = [], service = {} }) => this.setState({ service, clusters }),
+      error: e => Message.error(e.responseText || 'error'),
       complete: () => this.closeLoading(),
     });
   }
@@ -69,19 +84,21 @@ class ServiceDetail extends React.Component {
   }
 
   openEditServiceDialog() {
-    this.refs.editServiceDialog.show(this.state.service);
+    this.editServiceDialog.current.getInstance().show(this.state.service);
   }
 
   openClusterDialog(cluster) {
-    this.refs.editClusterDialog.show(cluster);
+    this.editClusterDialog.current.getInstance().show(cluster);
   }
 
   render() {
-    const { serviceName, loading, service = {}, clusters } = this.state;
-    const { metadata = {} } = service;
-    const metadataText = Object.keys(metadata)
-      .map(key => `${key}=${metadata[key]}`)
-      .join(',');
+    const { locale = {} } = this.props;
+    const { serviceName, groupName, loading, service = {}, clusters } = this.state;
+    const { metadata = {}, selector = {} } = service;
+    let metadataText = '';
+    if (Object.keys(metadata).length) {
+      metadataText = JSON.stringify(metadata, null, '\t');
+    }
     return (
       <div className="main-container service-detail">
         <Loading
@@ -97,62 +114,80 @@ class ServiceDetail extends React.Component {
               width: '100%',
             }}
           >
-            {I18N.SERVICE_DETAILS}
+            {locale.serviceDetails}
             <Button
               type="primary"
               className="header-btn"
               onClick={() => this.props.history.goBack()}
             >
-              {I18N.BACK}
+              {locale.back}
             </Button>
             <Button
               type="normal"
               className="header-btn"
               onClick={() => this.openEditServiceDialog()}
             >
-              {I18N.EDIT_SERVICE}
+              {locale.editService}
             </Button>
           </h1>
 
-          <Form style={{ width: '60%' }} {...pageFormLayout}>
-            <FormItem label={`${I18N.SERVICE_NAME}:`}>
-              <p>{service.name}</p>
+          <Form {...pageFormLayout}>
+            <FormItem label={`${locale.serviceName}:`}>
+              <Input value={service.name} readOnly />
             </FormItem>
-            <FormItem label={`${I18N.PROTECT_THRESHOLD}:`}>
-              <p>{service.protectThreshold}</p>
+            <FormItem label={`${locale.groupName}:`}>
+              <Input value={service.groupName} readOnly />
             </FormItem>
-            <FormItem label={`${I18N.HEALTH_CHECK_PATTERN}:`}>
-              <p>{service.healthCheckMode}</p>
+            <FormItem label={`${locale.protectThreshold}:`}>
+              <Input value={service.protectThreshold} readOnly />
             </FormItem>
-            <FormItem label={`${I18N.METADATA}:`}>
-              <p>{metadataText}</p>
+            <FormItem label={`${locale.metadata}:`}>
+              <MonacoEditor
+                language="json"
+                width={'100%'}
+                height={200}
+                value={metadataText}
+                options={MONACO_READONLY_OPTIONS}
+              />
             </FormItem>
+            <FormItem label={`${locale.type}:`}>
+              <Input value={selector.type} readOnly />
+            </FormItem>
+            {service.type === 'label' && (
+              <FormItem label={`${locale.selector}:`}>
+                <Input value={selector.selector} readOnly />
+              </FormItem>
+            )}
           </Form>
           {clusters.map(cluster => (
             <Card
               key={cluster.name}
               className="cluster-card"
-              title={`${I18N.CLUSTER}:`}
+              title={`${locale.cluster}:`}
               subTitle={cluster.name}
               contentHeight="auto"
               extra={
                 <Button type="normal" onClick={() => this.openClusterDialog(cluster)}>
-                  {I18N.EDIT_CLUSTER}
+                  {locale.editCluster}
                 </Button>
               }
             >
-              <InstanceTable clusterName={cluster.name} serviceName={serviceName} />
+              <InstanceTable
+                clusterName={cluster.name}
+                serviceName={serviceName}
+                groupName={groupName}
+              />
             </Card>
           ))}
         </Loading>
         <EditServiceDialog
-          ref="editServiceDialog"
+          ref={this.editServiceDialog}
           openLoading={() => this.openLoading()}
           closeLoading={() => this.closeLoading()}
           getServiceDetail={() => this.getServiceDetail()}
         />
         <EditClusterDialog
-          ref="editClusterDialog"
+          ref={this.editClusterDialog}
           openLoading={() => this.openLoading()}
           closeLoading={() => this.closeLoading()}
           getServiceDetail={() => this.getServiceDetail()}

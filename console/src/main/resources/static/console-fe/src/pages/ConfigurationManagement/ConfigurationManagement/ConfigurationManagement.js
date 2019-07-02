@@ -13,18 +13,11 @@
 
 import React from 'react';
 import PropTypes from 'prop-types';
-import BatchHandle from 'components/BatchHandle';
-import RegionGroup from 'components/RegionGroup';
-import ShowCodeing from 'components/ShowCodeing';
-import DeleteDialog from 'components/DeleteDialog';
-import CloneDialog from 'components/CloneDialog';
-import ImportDialog from 'components/ImportDialog';
-import ExportDialog from 'components/ExportDialog';
-import { getParams, setParams, request, aliwareIntl } from '../../../globalLib';
 import {
   Button,
   Checkbox,
   Collapse,
+  ConfigProvider,
   Dialog,
   Dropdown,
   Field,
@@ -35,103 +28,38 @@ import {
   Menu,
   Pagination,
   Select,
-  Slider,
   Table,
+  Grid,
+  Upload,
+  Message,
 } from '@alifd/next';
+import BatchHandle from 'components/BatchHandle';
+import RegionGroup from 'components/RegionGroup';
+import ShowCodeing from 'components/ShowCodeing';
+import DeleteDialog from 'components/DeleteDialog';
+import DashboardCard from './DashboardCard';
+import { getParams, setParams, request, aliwareIntl } from '@/globalLib';
 
 import './index.scss';
+import { LANGUAGE_KEY } from '../../../constants';
 
 const { Panel } = Collapse;
+const { Row, Col } = Grid;
+const configsTableSelected = new Map();
 
-const DashboardCard = ({ data = {}, height }) => (
-  <div>
-    {data.modeType === 'notice' ? (
-      <div data-spm-click={'gostr=/aliyun;locaid=notice'}>
-        <Slider style={{ marginBottom: data.modeList.length > 1 ? 20 : 10 }} arrows={false}>
-          {data.modeList.map((item, index) => (
-            <div key={index} className={'slider-img-wrapper'}>
-              <div
-                className={'alert alert-success'}
-                style={{ minHeight: 120, backgroundColor: '#e9feff' }}
-              >
-                <div className={'alert-success-text'} style={{ fontWeight: 'bold' }}>
-                  {aliwareIntl.get(
-                    'nacos.page.configurationManagement.Important_reminder0'
-                  ) /* 重要提醒 */}
-                </div>
-                <strong style={{ color: '#777a7e' }}>
-                  <span>{item.title}</span>
-                </strong>
-                <strong>
-                  <span>
-                    <a
-                      style={{ marginLeft: 10, color: '#33cde5' }}
-                      href={item.url}
-                      target={'_blank'}
-                    >
-                      {aliwareIntl.get(
-                        'nacos.page.configurationManagement.view_details1'
-                      ) /* 查看详情 */}
-                    </a>
-                  </span>
-                </strong>
-              </div>
-            </div>
-          ))}
-        </Slider>{' '}
-      </div>
-    ) : (
-      <div
-        className={'dash-card-contentwrappers'}
-        style={{ height: height || 'auto' }}
-        data-spm-click={`gostr=/aliyun;locaid=${data.modeType}`}
-      >
-        <h3 className={'dash-card-title'}>{data.modeName}</h3>
-        <div className={'dash-card-contentlist'}>
-          {data.modeList
-            ? data.modeList.map(item => (
-                <div className={'dash-card-contentitem'}>
-                  <a href={item.url} target={'_blank'}>
-                    {item.title}
-                  </a>
-                  {item.tag === 'new' ? (
-                    <img
-                      style={{ width: 28, marginLeft: 2, verticalAlign: 'text-bottom' }}
-                      src={'//img.alicdn.com/tps/TB1pS2YMVXXXXcCaXXXXXXXXXXX-56-24.png'}
-                      alt=""
-                    />
-                  ) : (
-                    ''
-                  )}
-                  {item.tag === 'hot' ? (
-                    <img
-                      style={{ width: 28, marginLeft: 2, verticalAlign: 'text-bottom' }}
-                      src={'//img.alicdn.com/tps/TB1nusxPXXXXXb0aXXXXXXXXXXX-56-24.png'}
-                      alt=""
-                    />
-                  ) : (
-                    ''
-                  )}
-                </div>
-              ))
-            : ''}
-        </div>
-      </div>
-    )}{' '}
-  </div>
-);
-DashboardCard.propTypes = {
-  data: PropTypes.object,
-  height: PropTypes.number,
-};
-
+@ConfigProvider.config
 class ConfigurationManagement extends React.Component {
+  static displayName = 'ConfigurationManagement';
+
   static propTypes = {
+    locale: PropTypes.object,
     history: PropTypes.object,
   };
 
   constructor(props) {
     super(props);
+    this.deleteDialog = React.createRef();
+    this.showcode = React.createRef();
     this.field = new Field(this);
     this.appName = getParams('appName') || getParams('edasAppId') || '';
     this.preAppName = this.appName;
@@ -184,52 +112,39 @@ class ConfigurationManagement extends React.Component {
   }
 
   componentDidMount() {
+    const { locale = {} } = this.props;
     // this.getGroup();
-    if (aliwareIntl.currentLanguageCode === 'zh-cn') {
-      // this.getContentList(); //在中文站获取概览页
-      this.setState({
-        isCn: true,
-      });
-    } else {
-      this.setState({
-        isCn: false,
-      });
-    }
+    this.setIsCn();
     if (window._getLink && window._getLink('isCn') === 'true') {
       if (!this.checkQuestionnaire()) {
         if (window.location.host === 'acm.console.aliyun.com') {
           Dialog.alert({
-            title: aliwareIntl.get(
-              'nacos.page.configurationManagement.questionnaire2'
-            ) /* 问卷调查 */,
+            title: locale.questionnaire2,
             style: {
               width: '60%',
             },
             content: (
               <div>
                 <div style={{ fontSize: '15px', lineHeight: '22px' }}>
-                  {aliwareIntl.get(
-                    'nacos.page.configurationManagement.a_ACM_front-end_monitoring_questionnaire,_the_time_limit_to_receive_Ali_cloud_voucher_details_shoved_stamp_the3'
-                  ) /* 答ACM前端监控调查问卷，限时领取阿里云代金券详情猛戳： */}
+                  {locale.ad}
                   <a href={'https://survey.aliyun.com/survey/k0BjJ2ARC'} target={'_blank'}>
-                    {aliwareIntl.get(
-                      'nacos.page.configurationManagement.questionnaire2'
-                    ) /* 问卷调查 */}
+                    {locale.questionnaire2}
                   </a>
                 </div>
                 <div style={{ fontSize: '15px' }}>
-                  {aliwareIntl.get(
-                    'nacos.page.configurationManagement.no_longer_display4'
-                  ) /* 不再显示： */}
+                  {locale.noLongerDisplay4}
                   <Checkbox onChange={this.toggleShowQuestionnaire} />
                 </div>
               </div>
             ),
-            language: aliwareIntl.currentLanguageCode,
           });
         }
       }
     }
+  }
+
+  setIsCn() {
+    this.setState({ isCn: localStorage.getItem(LANGUAGE_KEY) === 'zh-CN' });
   }
 
   /**
@@ -407,13 +322,13 @@ class ConfigurationManagement extends React.Component {
   }
 
   removeConfig(record) {
+    const { locale = {} } = this.props;
     const self = this;
     Dialog.confirm({
-      language: aliwareIntl.currentLanguageCode || 'zh-cn',
-      title: aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.Remove_configuration'),
+      title: locale.removeConfiguration,
       content: (
         <div style={{ marginTop: '-20px' }}>
-          <h3>{aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.suredelete')}</h3>
+          <h3>{locale.sureDelete}</h3>
           <p>
             <span style={{ color: '#999', marginRight: 5 }}>Data ID:</span>
             <span style={{ color: '#c7254e' }}>{record.dataId}</span>
@@ -423,9 +338,7 @@ class ConfigurationManagement extends React.Component {
             <span style={{ color: '#c7254e' }}>{record.group}</span>
           </p>
           <p>
-            <span style={{ color: '#999', marginRight: 5 }}>
-              {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.environment')}
-            </span>
+            <span style={{ color: '#999', marginRight: 5 }}>{locale.environment}</span>
             <span style={{ color: '#c7254e' }}>{self.serverId || ''}</span>
           </p>
         </div>
@@ -438,9 +351,7 @@ class ConfigurationManagement extends React.Component {
           success(res) {
             const _payload = {};
 
-            _payload.title = aliwareIntl.get(
-              'com.alibaba.nacos.page.configurationManagement.configuration_management'
-            );
+            _payload.title = locale.configurationManagement;
             _payload.content = '';
             _payload.dataId = record.dataId;
             _payload.group = record.group;
@@ -450,7 +361,7 @@ class ConfigurationManagement extends React.Component {
               _payload.isok = false;
               _payload.message = res.message;
             }
-            self.refs.delete.openDialog(_payload);
+            self.deleteDialog.current.getInstance().openDialog(_payload);
             self.getData();
           },
         });
@@ -463,45 +374,42 @@ class ConfigurationManagement extends React.Component {
   }
 
   showCode(record) {
-    this.refs.showcode.openDialog(record);
+    this.showcode.current.getInstance().openDialog(record);
   }
 
   renderCol(value, index, record) {
+    const { locale = {} } = this.props;
     return (
       <div>
         <a onClick={this.goDetail.bind(this, record)} style={{ marginRight: 5 }}>
-          {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.details')}
+          {locale.details}
         </a>
         <span style={{ marginRight: 5 }}>|</span>
         <a style={{ marginRight: 5 }} onClick={this.showCode.bind(this, record)}>
-          {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.the_sample_code')}
+          {locale.sampleCode}
         </a>
         <span style={{ marginRight: 5 }}>|</span>
         <a style={{ marginRight: 5 }} onClick={this.goEditor.bind(this, record)}>
-          {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.edit')}
+          {locale.edit}
         </a>
         <span style={{ marginRight: 5 }}>|</span>
         <a style={{ marginRight: 5 }} onClick={this.removeConfig.bind(this, record)}>
-          {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.delete')}
+          {locale.deleteAction}
         </a>
         <span style={{ marginRight: 5 }}>|</span>
 
         <Dropdown
           trigger={
             <span style={{ color: '#33cde5' }}>
-              {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.more')}
+              {locale.more}
               <Icon type={'arrow-down-filling'} size={'xxs'} />
             </span>
           }
           triggerType={'click'}
         >
           <Menu onItemClick={this.chooseNav.bind(this, record)}>
-            <Menu.Item key={'nav1'}>
-              {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.version')}
-            </Menu.Item>
-            <Menu.Item key={'nav3'}>
-              {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.listener_query')}
-            </Menu.Item>
+            <Menu.Item key={'nav1'}>{locale.version}</Menu.Item>
+            <Menu.Item key={'nav3'}>{locale.listenerQuery}</Menu.Item>
           </Menu>
         </Dropdown>
       </div>
@@ -696,24 +604,15 @@ class ConfigurationManagement extends React.Component {
   onPageSelectAll(selected, records) {}
 
   getBatchFailedContent(res) {
+    const { locale = {} } = this.props;
     return (
       <div>
         <div style={{ fontSize: 18, color: '#373D41', overflow: 'auto' }}>{res.message}</div>
         {'data' in res && res.data != null && (
           <Collapse style={{ width: '500px' }}>
             {'failedItems' in res.data && res.data.failedItems.length > 0 ? (
-              <Panel
-                title={
-                  aliwareIntl.get('nacos.page.configurationManagement.failed_entry') +
-                  res.data.failedItems.length
-                }
-              >
-                <Table
-                  dataSource={res.data.failedItems}
-                  fixedHeader
-                  maxBodyHeight={400}
-                  language={aliwareIntl.currentLanguageCode}
-                >
+              <Panel title={locale.failedEntry + res.data.failedItems.length}>
+                <Table dataSource={res.data.failedItems} fixedHeader maxBodyHeight={400}>
                   <Table.Column title={'Data ID'} dataIndex={'dataId'} />
                   <Table.Column title={'Group'} dataIndex={'group'} />
                 </Table>
@@ -722,18 +621,8 @@ class ConfigurationManagement extends React.Component {
               <Panel style={{ display: 'none' }} />
             )}
             {'succeededItems' in res.data && res.data.succeededItems.length > 0 ? (
-              <Panel
-                title={
-                  aliwareIntl.get('nacos.page.configurationManagement.successful_entry') +
-                  res.data.succeededItems.length
-                }
-              >
-                <Table
-                  dataSource={res.data.succeededItems}
-                  fixedHeader
-                  maxBodyHeight={400}
-                  language={aliwareIntl.currentLanguageCode}
-                >
+              <Panel title={locale.successfulEntry + res.data.succeededItems.length}>
+                <Table dataSource={res.data.succeededItems} fixedHeader maxBodyHeight={400}>
                   <Table.Column title={'Data ID'} dataIndex={'dataId'} />
                   <Table.Column title={'Group'} dataIndex={'group'} />
                 </Table>
@@ -742,18 +631,8 @@ class ConfigurationManagement extends React.Component {
               <Panel style={{ display: 'none' }} />
             )}
             {'unprocessedItems' in res.data && res.data.unprocessedItems.length > 0 ? (
-              <Panel
-                title={
-                  aliwareIntl.get('nacos.page.configurationManagement.unprocessed_entry') +
-                  res.data.unprocessedItems.length
-                }
-              >
-                <Table
-                  dataSource={res.data.unprocessedItems}
-                  fixedHeader
-                  maxBodyHeight={400}
-                  language={aliwareIntl.currentLanguageCode}
-                >
+              <Panel title={locale.unprocessedEntry + res.data.unprocessedItems.length}>
+                <Table dataSource={res.data.unprocessedItems} fixedHeader maxBodyHeight={400}>
                   <Table.Column title={'Data ID'} dataIndex={'dataId'} />
                   <Table.Column title={'Group'} dataIndex={'group'} />
                 </Table>
@@ -793,11 +672,378 @@ class ConfigurationManagement extends React.Component {
     });
   }
 
-  render() {
-    const pubnodedata = aliwareIntl.get('pubnodata');
-    const locale = {
-      empty: pubnodedata,
+  exportData() {
+    let url = `v1/cs/configs?export=true&group=${this.group}&tenant=${getParams(
+      'namespace'
+    )}&appName=${this.appName}&ids=`;
+    window.location.href = url;
+  }
+
+  exportSelectedData() {
+    const { locale = {} } = this.props;
+    if (configsTableSelected.size === 0) {
+      Dialog.alert({
+        title: locale.exportSelectedAlertTitle,
+        content: locale.exportSelectedAlertContent,
+      });
+    } else {
+      let idsStr = '';
+      configsTableSelected.forEach((value, key, map) => {
+        idsStr = `${idsStr + key},`;
+      });
+      let url = `v1/cs/configs?export=true&group=&tenant=&appName=&ids=${idsStr}`;
+      window.location.href = url;
+    }
+  }
+
+  cloneSelectedDataConfirm() {
+    const { locale = {} } = this.props;
+    const self = this;
+    self.field.setValue('sameConfigPolicy', 'ABORT');
+    self.field.setValue('cloneTargetSpace', undefined);
+    if (configsTableSelected.size === 0) {
+      Dialog.alert({
+        title: locale.exportSelectedAlertTitle,
+        content: locale.exportSelectedAlertContent,
+      });
+      return;
+    }
+    request({
+      url: 'v1/console/namespaces?namespaceId=',
+      beforeSend() {
+        self.openLoading();
+      },
+      success(data) {
+        if (!data || data.code !== 200 || !data.data) {
+          Dialog.alert({
+            title: locale.getNamespaceFailed,
+            content: locale.getNamespaceFailed,
+          });
+        }
+        let namespaces = data.data;
+        let namespaceSelectData = [];
+        namespaces.forEach(item => {
+          if (self.state.nownamespace_id !== item.namespace) {
+            let dataItem = {};
+            if (item.namespaceShowName === 'public') {
+              dataItem.label = 'public | public';
+              dataItem.value = 'public';
+            } else {
+              dataItem.label = `${item.namespaceShowName} | ${item.namespace}`;
+              dataItem.value = item.namespace;
+            }
+            namespaceSelectData.push(dataItem);
+          }
+        });
+        const cloneConfirm = Dialog.confirm({
+          title: locale.cloningConfiguration,
+          footer: false,
+          content: (
+            <div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ color: '#999', marginRight: 5 }}>{locale.source}</span>
+                <span style={{ color: '#49D2E7' }}>{self.state.nownamespace_name} </span>|{' '}
+                {self.state.nownamespace_id}
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ color: '#999', marginRight: 5 }}>{locale.configurationNumber}</span>
+                <span style={{ color: '#49D2E7' }}>{configsTableSelected.size} </span>
+                {locale.selectedEntry}
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ color: 'red', marginRight: 2, marginLeft: -10 }}>{'*'}</span>
+                <span style={{ color: '#999', marginRight: 5 }}>{locale.target}</span>
+                <Select
+                  style={{ width: 450 }}
+                  placeholder={locale.selectNamespace}
+                  size={'medium'}
+                  hasArrow
+                  showSearch
+                  hasClear={false}
+                  mode="single"
+                  dataSource={namespaceSelectData}
+                  onChange={(value, actionType, item) => {
+                    if (value) {
+                      document.getElementById('cloneTargetSpaceSelectErr').style.display = 'none';
+                      self.field.setValue('cloneTargetSpace', value);
+                    }
+                  }}
+                />
+                <br />
+                <span id={'cloneTargetSpaceSelectErr'} style={{ color: 'red', display: 'none' }}>
+                  {locale.selectNamespace}
+                </span>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ color: '#999', marginRight: 5 }}>{locale.samePreparation}:</span>
+                <Select
+                  style={{ width: 130 }}
+                  size={'medium'}
+                  hasArrow
+                  mode="single"
+                  filterLocal={false}
+                  defaultValue={'ABORT'}
+                  dataSource={[
+                    {
+                      label: locale.abortImport,
+                      value: 'ABORT',
+                    },
+                    {
+                      label: locale.skipImport,
+                      value: 'SKIP',
+                    },
+                    {
+                      label: locale.overwriteImport,
+                      value: 'OVERWRITE',
+                    },
+                  ]}
+                  hasClear={false}
+                  onChange={(value, actionType, item) => {
+                    if (value) {
+                      self.field.setValue('sameConfigPolicy', value);
+                    }
+                  }}
+                />
+              </div>
+              <div>
+                <Button
+                  type={'primary'}
+                  style={{ marginRight: 10 }}
+                  onClick={() => {
+                    if (!self.field.getValue('cloneTargetSpace')) {
+                      document.getElementById('cloneTargetSpaceSelectErr').style.display = 'inline';
+                      return;
+                    } else {
+                      document.getElementById('cloneTargetSpaceSelectErr').style.display = 'none';
+                    }
+                    let idsStr = '';
+                    configsTableSelected.forEach((value, key, map) => {
+                      idsStr = `${idsStr + key},`;
+                    });
+                    let cloneTargetSpace = self.field.getValue('cloneTargetSpace');
+                    let sameConfigPolicy = self.field.getValue('sameConfigPolicy');
+                    request({
+                      url: `v1/cs/configs?clone=true&tenant=${cloneTargetSpace}&policy=${sameConfigPolicy}&ids=${idsStr}`,
+                      beforeSend() {
+                        self.openLoading();
+                      },
+                      success(ret) {
+                        self.processImportAndCloneResult(ret, locale, cloneConfirm, false);
+                      },
+                      error(data) {
+                        self.setState({
+                          dataSource: [],
+                          total: 0,
+                          currentPage: 0,
+                        });
+                      },
+                      complete() {
+                        self.closeLoading();
+                      },
+                    });
+                  }}
+                  data-spm-click={'gostr=/aliyun;locaid=doClone'}
+                >
+                  {locale.startCloning}
+                </Button>
+              </div>
+            </div>
+          ),
+        });
+      },
+      error(data) {
+        self.setState({
+          dataSource: [],
+          total: 0,
+          currentPage: 0,
+        });
+      },
+      complete() {
+        self.closeLoading();
+      },
+    });
+  }
+
+  processImportAndCloneResult(ret, locale, confirm, isImport) {
+    const resultCode = ret.code;
+    console.log(ret);
+    if (resultCode === 200) {
+      confirm.hide();
+      if (ret.data.failData && ret.data.failData.length > 0) {
+        Dialog.alert({
+          title: isImport ? locale.importAbort : locale.cloneAbort,
+          content: (
+            <div style={{ width: '500px' }}>
+              <h4>
+                {locale.conflictConfig}：{ret.data.failData[0].group}/{ret.data.failData[0].dataId}
+              </h4>
+              <div style={{ marginTop: 20 }}>
+                <h5>
+                  {locale.failureEntries}: {ret.data.failData.length}
+                </h5>
+                <Table dataSource={ret.data.failData}>
+                  <Table.Column title="Data Id" dataIndex="dataId" />
+                  <Table.Column title="Group" dataIndex="group" />
+                </Table>
+              </div>
+              <div>
+                <h5>
+                  {locale.unprocessedEntries}: {ret.data.skipData ? ret.data.skipData.length : 0}
+                </h5>
+                <Table dataSource={ret.data.skipData}>
+                  <Table.Column title="Data Id" dataIndex="dataId" />
+                  <Table.Column title="Group" dataIndex="group" />
+                </Table>
+              </div>
+            </div>
+          ),
+        });
+      } else if (ret.data.skipCount && ret.data.skipCount > 0) {
+        Dialog.alert({
+          title: isImport ? locale.importSucc : locale.cloneSucc,
+          content: (
+            <div style={{ width: '500px' }}>
+              <div>
+                <h5>
+                  {locale.skippedEntries}: {ret.data.skipData.length}
+                </h5>
+                <Table dataSource={ret.data.skipData}>
+                  <Table.Column title="Data Id" dataIndex="dataId" />
+                  <Table.Column title="Group" dataIndex="group" />
+                </Table>
+              </div>
+            </div>
+          ),
+        });
+      } else {
+        let message = `${isImport ? locale.importSuccBegin : locale.cloneSuccBegin}${
+          ret.data.succCount
+        }${isImport ? locale.importSuccEnd : locale.cloneSuccEnd}`;
+        Message.success(message);
+      }
+      this.getData();
+    } else {
+      let alertContent = isImport ? locale.importFailMsg : locale.cloneFailMsg;
+      if (resultCode === 100001) {
+        alertContent = locale.namespaceNotExist;
+      }
+      if (resultCode === 100002) {
+        alertContent = locale.metadataIllegal;
+      }
+      if (resultCode === 100003 || resultCode === 100004 || resultCode === 100005) {
+        alertContent = locale.importDataValidationError;
+      }
+      Dialog.alert({
+        title: isImport ? locale.importFail : locale.cloneFail,
+        content: alertContent,
+      });
+    }
+  }
+
+  importData() {
+    const { locale = {} } = this.props;
+    const self = this;
+    self.field.setValue('sameConfigPolicy', 'ABORT');
+    const uploadProps = {
+      accept: 'application/zip',
+      action: `v1/cs/configs?import=true&namespace=${getParams('namespace')}`,
+      data: {
+        policy: self.field.getValue('sameConfigPolicy'),
+      },
+      beforeUpload(file, options) {
+        options.data = {
+          policy: self.field.getValue('sameConfigPolicy'),
+        };
+        return options;
+      },
+      onSuccess(ret) {
+        self.processImportAndCloneResult(ret.response, locale, importConfirm, true);
+      },
+      onError(err) {
+        Dialog.alert({
+          title: locale.importFail,
+          content: locale.importDataValidationError,
+        });
+      },
     };
+    const importConfirm = Dialog.confirm({
+      title: locale.import,
+      footer: false,
+      content: (
+        <div>
+          <div style={{ marginBottom: 10 }}>
+            <span style={{ color: '#999', marginRight: 5 }}>{locale.targetNamespace}:</span>
+            <span style={{ color: '#49D2E7' }}>{this.state.nownamespace_name} </span>|{' '}
+            {this.state.nownamespace_id}
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <span style={{ color: '#999', marginRight: 5 }}>{locale.samePreparation}:</span>
+            <Select
+              style={{ width: 130 }}
+              size={'medium'}
+              hasArrow
+              mode="single"
+              filterLocal={false}
+              defaultValue={'ABORT'}
+              dataSource={[
+                {
+                  label: locale.abortImport,
+                  value: 'ABORT',
+                },
+                {
+                  label: locale.skipImport,
+                  value: 'SKIP',
+                },
+                {
+                  label: locale.overwriteImport,
+                  value: 'OVERWRITE',
+                },
+              ]}
+              hasClear={false}
+              onChange={function(value, actionType, item) {
+                self.field.setValue('sameConfigPolicy', value);
+              }}
+            />
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <Icon type="prompt" style={{ color: '#FFA003', marginRight: '10px' }} />
+            {locale.importRemind}
+          </div>
+          <div>
+            <Upload
+              name={'file'}
+              listType="text"
+              data-spm-click={'gostr=/aliyun;locaid=configsImport'}
+              {...uploadProps}
+            >
+              <Button type="primary">{locale.uploadBtn}</Button>
+            </Upload>
+          </div>
+        </div>
+      ),
+    });
+  }
+
+  configsTableOnSelect(selected, record, records) {
+    if (selected) {
+      configsTableSelected.set(record.id, record);
+    } else {
+      configsTableSelected.delete(record.id);
+    }
+  }
+
+  configsTableOnSelectAll(selected, records) {
+    if (selected) {
+      records.forEach((record, i) => {
+        configsTableSelected.set(record.id, record);
+      });
+    } else {
+      configsTableSelected.clear();
+    }
+  }
+
+  render() {
+    const { locale = {} } = this.props;
     return (
       <div>
         <BatchHandle ref={ref => (this.batchHandle = ref)} />
@@ -842,9 +1088,7 @@ class ConfigurationManagement extends React.Component {
                   }}
                 >
                   <span style={{ fontSize: '14px', color: '#000', marginRight: 8 }}>
-                    {aliwareIntl.get(
-                      'nacos.page.configurationManagement.configuration_management8'
-                    ) /* 配置管理 */}
+                    {locale.configurationManagement8}
                   </span>
                   <span style={{ fontSize: '14px', color: '#000', marginRight: 8 }}>|</span>
                   <span style={{ fontSize: '14px', color: '#000', marginRight: 8 }}>
@@ -853,11 +1097,9 @@ class ConfigurationManagement extends React.Component {
                   <span style={{ fontSize: '14px', color: '#000', marginRight: 18 }}>
                     {this.state.nownamespace_id}
                   </span>
-                  {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.query_results')}
-                  <strong style={{ fontWeight: 'bold' }}> {this.state.total} </strong>
-                  {aliwareIntl.get(
-                    'com.alibaba.nacos.page.configurationManagement.article_meet_the_requirements'
-                  )}
+                  {locale.queryResults}
+                  <strong style={{ fontWeight: 'bold' }}> {this.state.total} </strong>
+                  {locale.articleMeetRequirements}
                 </h3>
                 <div
                   style={{ position: 'absolute', textAlign: 'right', zIndex: 2, right: 0, top: 0 }}
@@ -867,7 +1109,7 @@ class ConfigurationManagement extends React.Component {
                 style={{
                   position: 'relative',
                   marginTop: 10,
-                  height: this.state.isAdvancedQuery ? 'auto' : 48,
+                  height: this.state.isAdvancedQuery ? 'auto' : 42,
                   overflow: 'hidden',
                 }}
               >
@@ -875,9 +1117,7 @@ class ConfigurationManagement extends React.Component {
                   <Form.Item label={'Data ID:'}>
                     <Input
                       htmlType={'text'}
-                      placeholder={aliwareIntl.get(
-                        'com.alibaba.nacos.page.configurationManagement.fuzzyd'
-                      )}
+                      placeholder={locale.fuzzyd}
                       style={{ width: 200 }}
                       value={this.state.dataId}
                       onChange={this.getDataId.bind(this)}
@@ -888,14 +1128,11 @@ class ConfigurationManagement extends React.Component {
                     <Select.AutoComplete
                       style={{ width: 200 }}
                       size={'medium'}
-                      placeholder={aliwareIntl.get(
-                        'com.alibaba.nacos.page.configurationManagement.fuzzyg'
-                      )}
+                      placeholder={locale.fuzzyg}
                       dataSource={this.state.groups}
                       value={this.state.group}
                       onChange={this.setGroup.bind(this)}
                       hasClear
-                      language={aliwareIntl.currentLanguageCode}
                     />
                   </Form.Item>
                   <Form.Item label={''}>
@@ -905,7 +1142,7 @@ class ConfigurationManagement extends React.Component {
                       onClick={this.selectAll.bind(this)}
                       data-spm-click={'gostr=/aliyun;locaid=dashsearch'}
                     >
-                      {aliwareIntl.get('com.alibaba.nacos.page.configurationManagement.query')}
+                      {locale.query}
                     </Button>
                   </Form.Item>
                   <Form.Item
@@ -920,9 +1157,7 @@ class ConfigurationManagement extends React.Component {
                       onClick={this.changeAdvancedQuery}
                     >
                       <span style={{ marginRight: 5, lineHeight: '28px' }}>
-                        {aliwareIntl.get(
-                          'nacos.page.configurationManagement.advanced_query9'
-                        ) /* 高级查询 */}
+                        {locale.advancedQuery9}
                       </span>
                       <Icon
                         type={
@@ -932,42 +1167,51 @@ class ConfigurationManagement extends React.Component {
                       />
                     </div>
                   </Form.Item>
+                  <Form.Item label={''}>
+                    <Button
+                      type={'primary'}
+                      style={{ marginRight: 10 }}
+                      onClick={this.exportData.bind(this)}
+                      data-spm-click={'gostr=/aliyun;locaid=configsExport'}
+                    >
+                      {locale.export}
+                    </Button>
+                  </Form.Item>
+                  <Form.Item label={''}>
+                    <Button
+                      type={'primary'}
+                      style={{ marginRight: 10 }}
+                      onClick={this.importData.bind(this)}
+                      data-spm-click={'gostr=/aliyun;locaid=configsExport'}
+                    >
+                      {locale.import}
+                    </Button>
+                  </Form.Item>
                   <br />
                   <Form.Item
                     style={this.inApp ? { display: 'none' } : {}}
-                    label={
-                      aliwareIntl.get(
-                        'nacos.page.configurationManagement.HOME_Application0'
-                      ) /* 归属应用： */
-                    }
+                    label={locale.application0}
                   >
                     <Input
                       htmlType={'text'}
-                      placeholder={
-                        aliwareIntl.get(
-                          'nacos.page.configurationManagement.Please_enter_the_name_of_the_app1'
-                        ) /* 请输入应用名称 */
-                      }
+                      placeholder={locale.app1}
                       style={{ width: 200 }}
                       value={this.state.appName}
                       onChange={this.setAppName.bind(this)}
                     />
                   </Form.Item>
-                  <Form.Item label={aliwareIntl.get('nacos.page.configurationManagement.Tags')}>
+                  <Form.Item label={locale.tags}>
                     <Select
                       style={{ width: 200 }}
                       size={'medium'}
                       hasArrow
                       mode="tag"
                       filterLocal={false}
-                      placeholder={aliwareIntl.get(
-                        'nacos.page.configurationManagement.Please_enter_tag'
-                      )}
+                      placeholder={locale.pleaseEnterTag}
                       dataSource={this.state.tagLst}
                       value={this.state.config_tags}
                       onChange={this.setConfigTags.bind(this)}
                       hasClear
-                      language={aliwareIntl.currentLanguageCode}
                     />
                   </Form.Item>
                 </Form>
@@ -991,52 +1235,63 @@ class ConfigurationManagement extends React.Component {
               <div>
                 <Table
                   dataSource={this.state.dataSource}
-                  locale={locale}
+                  locale={{ empty: locale.pubNoData }}
                   fixedHeader
                   maxBodyHeight={400}
-                  language={aliwareIntl.currentLanguageCode}
                   ref={'dataTable'}
+                  rowSelection={{
+                    onSelect: this.configsTableOnSelect,
+                    onSelectAll: this.configsTableOnSelectAll,
+                  }}
                 >
                   <Table.Column title={'Data Id'} dataIndex={'dataId'} />
                   <Table.Column title={'Group'} dataIndex={'group'} />
                   {!this.inApp ? (
-                    <Table.Column
-                      title={aliwareIntl.get('nacos.page.configurationManagement.HOME_Application')}
-                      dataIndex={'appName'}
-                    />
+                    <Table.Column title={locale.application} dataIndex={'appName'} />
                   ) : (
                     <div />
                   )}
-                  <Table.Column
-                    title={aliwareIntl.get(
-                      'com.alibaba.nacos.page.configurationManagement.operation'
-                    )}
-                    cell={this.renderCol.bind(this)}
-                  />
+                  <Table.Column title={locale.operation} cell={this.renderCol.bind(this)} />
                 </Table>
                 {this.state.dataSource.length > 0 && (
                   <div style={{ marginTop: 10, overflow: 'hidden' }}>
-                    <Pagination
-                      style={{ float: 'right' }}
-                      pageSizeList={[10, 20, 30]}
-                      pageSizeSelector={'dropdown'}
-                      onPageSizeChange={this.handlePageSizeChange.bind(this)}
-                      current={this.state.currentPage}
-                      language={aliwareIntl.currentLanguageCode || 'zh-cn'}
-                      total={this.state.total}
-                      pageSize={this.state.pageSize}
-                      onChange={this.changePage.bind(this)}
-                    />
+                    <div style={{ float: 'left' }}>
+                      <Button
+                        type={'primary'}
+                        style={{ marginLeft: 60, marginRight: 10 }}
+                        onClick={this.exportSelectedData.bind(this)}
+                        data-spm-click={'gostr=/aliyun;locaid=configsExport'}
+                      >
+                        {locale.exportSelected}
+                      </Button>
+                      <Button
+                        type={'primary'}
+                        style={{ marginRight: 10 }}
+                        onClick={this.cloneSelectedDataConfirm.bind(this)}
+                        data-spm-click={'gostr=/aliyun;locaid=configsClone'}
+                      >
+                        {locale.clone}
+                      </Button>
+                    </div>
+                    <div style={{ float: 'right' }}>
+                      <Pagination
+                        style={{ float: 'right' }}
+                        pageSizeList={[10, 20, 30]}
+                        pageSizeSelector={'dropdown'}
+                        onPageSizeChange={this.handlePageSizeChange.bind(this)}
+                        current={this.state.currentPage}
+                        total={this.state.total}
+                        pageSize={this.state.pageSize}
+                        onChange={this.changePage.bind(this)}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
-              <ShowCodeing ref={'showcode'} />
-              <DeleteDialog ref={'delete'} />
-              <CloneDialog ref={'cloneDialog'} />
-              <ImportDialog ref={'importDialog'} />
-              <ExportDialog ref={'exportDialog'} />
+              <ShowCodeing ref={this.showcode} />
+              <DeleteDialog ref={this.deleteDialog} />
             </div>
-            {this.state.hasdash ? (
+            {this.state.hasdash && (
               <div
                 className={'dash-right-container'}
                 style={{ overflow: 'auto', height: window.innerHeight - 40 }}
@@ -1045,8 +1300,6 @@ class ConfigurationManagement extends React.Component {
                   <DashboardCard data={v} height={'auto'} key={`show${i}`} />
                 ))}
               </div>
-            ) : (
-              ''
             )}
           </div>
         </Loading>

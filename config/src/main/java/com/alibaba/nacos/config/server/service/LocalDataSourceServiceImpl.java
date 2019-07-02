@@ -17,6 +17,7 @@ package com.alibaba.nacos.config.server.service;
 
 import com.alibaba.nacos.config.server.constant.Constants;
 import com.alibaba.nacos.config.server.utils.LogUtil;
+import com.alibaba.nacos.config.server.utils.PropertyUtil;
 import com.alibaba.nacos.config.server.utils.StringUtils;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.slf4j.Logger;
@@ -38,9 +39,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static com.alibaba.nacos.common.util.SystemUtils.NACOS_HOME;
-import static com.alibaba.nacos.common.util.SystemUtils.NACOS_HOME_KEY;
-import static com.alibaba.nacos.common.util.SystemUtils.STANDALONE_MODE;
+import static com.alibaba.nacos.core.utils.SystemUtils.NACOS_HOME;
+import static com.alibaba.nacos.core.utils.SystemUtils.NACOS_HOME_KEY;
+import static com.alibaba.nacos.core.utils.SystemUtils.STANDALONE_MODE;
 
 /**
  * local data source
@@ -73,7 +74,7 @@ public class LocalDataSourceServiceImpl implements DataSourceService {
         ds.setMaxWait(10000L);
         ds.setPoolPreparedStatements(true);
         ds.setTimeBetweenEvictionRunsMillis(TimeUnit.MINUTES
-                .toMillis(10L));
+            .toMillis(10L));
         ds.setTestWhileIdle(true);
 
         jt = new JdbcTemplate();
@@ -85,7 +86,7 @@ public class LocalDataSourceServiceImpl implements DataSourceService {
         tm.setDataSource(ds);
         tjt.setTimeout(5000);
 
-        if (STANDALONE_MODE) {
+        if (STANDALONE_MODE && !PropertyUtil.isStandaloneUseMysql()) {
             reload();
         }
     }
