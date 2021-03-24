@@ -16,7 +16,10 @@
 
 package com.alibaba.nacos.config.server.controller;
 
+import com.alibaba.nacos.common.constant.HttpHeaderConsts;
+import com.alibaba.nacos.common.utils.IoUtils;
 import com.alibaba.nacos.config.server.constant.Constants;
+import com.alibaba.nacos.config.server.enums.FileTypeEnum;
 import com.alibaba.nacos.config.server.model.CacheItem;
 import com.alibaba.nacos.config.server.model.ConfigInfoBase;
 import com.alibaba.nacos.config.server.service.ConfigCacheService;
@@ -136,8 +139,13 @@ public class ConfigServletInner {
                             isBeta = true;
                         }
                     }
-                    String configType = cacheItem.getType();
-                    response.setHeader("Config-Type", (null != configType) ? configType : "text");
+    
+                    final String configType =
+                            (null != cacheItem.getType()) ? cacheItem.getType() : FileTypeEnum.TEXT.getFileType();
+                    response.setHeader("Config-Type", configType);
+                    FileTypeEnum fileTypeEnum = FileTypeEnum.getFileTypeEnumByFileExtensionOrFileType(configType);
+                    String contentTypeHeader = fileTypeEnum.getContentType();
+                    response.setHeader(HttpHeaderConsts.CONTENT_TYPE, contentTypeHeader);
                 }
                 File file = null;
                 ConfigInfoBase configInfoBase = null;
@@ -264,9 +272,7 @@ public class ConfigServletInner {
                 
             } finally {
                 releaseConfigReadLock(groupKey);
-                if (null != fis) {
-                    fis.close();
-                }
+                IoUtils.closeQuietly(fis);
             }
         } else if (lockResult == 0) {
             

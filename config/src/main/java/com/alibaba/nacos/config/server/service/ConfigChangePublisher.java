@@ -16,10 +16,10 @@
 
 package com.alibaba.nacos.config.server.service;
 
+import com.alibaba.nacos.common.notify.NotifyCenter;
 import com.alibaba.nacos.config.server.model.event.ConfigDataChangeEvent;
 import com.alibaba.nacos.config.server.utils.PropertyUtil;
-import com.alibaba.nacos.config.server.utils.event.EventDispatcher;
-import com.alibaba.nacos.core.utils.ApplicationUtils;
+import com.alibaba.nacos.sys.env.EnvUtil;
 
 /**
  * ConfigChangePublisher.
@@ -30,13 +30,14 @@ public class ConfigChangePublisher {
     
     /**
      * Notify ConfigChange.
+     *
      * @param event ConfigDataChangeEvent instance.
      */
     public static void notifyConfigChange(ConfigDataChangeEvent event) {
-        if (PropertyUtil.isEmbeddedStorage() && !ApplicationUtils.getStandaloneMode()) {
+        if (PropertyUtil.isEmbeddedStorage() && !EnvUtil.getStandaloneMode()) {
             return;
         }
-        EventDispatcher.fireEvent(event);
+        NotifyCenter.publishEvent(event);
     }
     
 }

@@ -16,9 +16,10 @@
 
 package com.alibaba.nacos.config.server.service.merge;
 
+import com.alibaba.nacos.common.notify.NotifyCenter;
+import com.alibaba.nacos.common.task.NacosTask;
 import com.alibaba.nacos.config.server.constant.Constants;
-import com.alibaba.nacos.config.server.manager.AbstractTask;
-import com.alibaba.nacos.config.server.manager.TaskProcessor;
+import com.alibaba.nacos.common.task.NacosTaskProcessor;
 import com.alibaba.nacos.config.server.model.ConfigInfo;
 import com.alibaba.nacos.config.server.model.ConfigInfoAggr;
 import com.alibaba.nacos.config.server.model.Page;
@@ -27,8 +28,7 @@ import com.alibaba.nacos.config.server.service.repository.PersistService;
 import com.alibaba.nacos.config.server.service.trace.ConfigTraceService;
 import com.alibaba.nacos.config.server.utils.ContentUtils;
 import com.alibaba.nacos.config.server.utils.TimeUtils;
-import com.alibaba.nacos.config.server.utils.event.EventDispatcher;
-import com.alibaba.nacos.core.utils.InetUtils;
+import com.alibaba.nacos.sys.utils.InetUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +42,7 @@ import java.util.List;
  *
  * @author Nacos
  */
-public class MergeTaskProcessor implements TaskProcessor {
+public class MergeTaskProcessor implements NacosTaskProcessor {
     
     private static final int PAGE_SIZE = 10000;
     
@@ -52,7 +52,7 @@ public class MergeTaskProcessor implements TaskProcessor {
     }
     
     @Override
-    public boolean process(String taskType, AbstractTask task) {
+    public boolean process(NacosTask task) {
         MergeDataTask mergeTask = (MergeDataTask) task;
         final String dataId = mergeTask.dataId;
         final String group = mergeTask.groupId;
@@ -79,11 +79,12 @@ public class MergeTaskProcessor implements TaskProcessor {
                 
                 persistService.insertOrUpdate(null, null, cf, time, null);
                 
-                LOGGER.info("[merge-ok] {}, {}, size={}, length={}, md5={}, content={}", dataId, group, datumList.size(),
-                        cf.getContent().length(), cf.getMd5(), ContentUtils.truncateContent(cf.getContent()));
+                LOGGER.info("[merge-ok] {}, {}, size={}, length={}, md5={}, content={}", dataId, group,
+                        datumList.size(), cf.getContent().length(), cf.getMd5(),
+                        ContentUtils.truncateContent(cf.getContent()));
                 
                 ConfigTraceService
-                        .logPersistenceEvent(dataId, group, tenant, null, time.getTime(), InetUtils.getSelfIp(),
+                        .logPersistenceEvent(dataId, group, tenant, null, time.getTime(), InetUtils.getSelfIP(),
                                 ConfigTraceService.PERSISTENCE_EVENT_MERGE, cf.getContent());
             } else {
                 // remove
@@ -93,14 +94,14 @@ public class MergeTaskProcessor implements TaskProcessor {
                     persistService.removeConfigInfoTag(dataId, group, tenant, tag, clientIp, null);
                 }
                 
-                LOGGER.warn("[merge-delete] delete config info because no datum. dataId=" + dataId + ", groupId=" + group);
+                LOGGER.warn(
+                        "[merge-delete] delete config info because no datum. dataId=" + dataId + ", groupId=" + group);
                 
                 ConfigTraceService
-                        .logPersistenceEvent(dataId, group, tenant, null, time.getTime(), InetUtils.getSelfIp(),
+                        .logPersistenceEvent(dataId, group, tenant, null, time.getTime(), InetUtils.getSelfIP(),
                                 ConfigTraceService.PERSISTENCE_EVENT_REMOVE, null);
             }
-            
-            EventDispatcher.fireEvent(new ConfigDataChangeEvent(false, dataId, group, tenant, tag, time.getTime()));
+            NotifyCenter.publishEvent(new ConfigDataChangeEvent(false, dataId, group, tenant, tag, time.getTime()));
             
         } catch (Exception e) {
             mergeService.addMergeTask(dataId, group, tenant, mergeTask.getClientIp());
@@ -113,9 +114,9 @@ public class MergeTaskProcessor implements TaskProcessor {
     /**
      * merge datumList {@link ConfigInfoAggr}.
      *
-     * @param dataId data id
-     * @param group group
-     * @param tenant tenant
+     * @param dataId    data id
+     * @param group     group
+     * @param tenant    tenant
      * @param datumList datumList
      * @return {@link ConfigInfo}
      */

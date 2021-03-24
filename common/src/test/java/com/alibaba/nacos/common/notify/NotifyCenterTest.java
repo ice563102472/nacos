@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class NotifyCenterTest {
     
     private static class TestSlowEvent extends SlowEvent {
+    
     }
     
     private static class TestEvent extends Event {
@@ -131,6 +132,7 @@ public class NotifyCenterTest {
                 return ExpireEvent.class;
             }
             
+            @Override
             public boolean ignoreExpireEvent() {
                 return true;
             }
@@ -330,9 +332,11 @@ public class NotifyCenterTest {
     }
     
     private static class TestSlowEvent1 extends SlowEvent {
+    
     }
     
     private static class TestSlowEvent2 extends SlowEvent {
+    
     }
     
     @Test
@@ -343,10 +347,10 @@ public class NotifyCenterTest {
         
         final AtomicInteger count1 = new AtomicInteger(0);
         final AtomicInteger count2 = new AtomicInteger(0);
-    
+        
         final CountDownLatch latch1 = new CountDownLatch(3);
         final CountDownLatch latch2 = new CountDownLatch(3);
-    
+        
         NotifyCenter.registerSubscriber(new Subscriber<TestSlowEvent1>() {
             @Override
             public void onEvent(TestSlowEvent1 event) {
@@ -365,7 +369,7 @@ public class NotifyCenterTest {
             public void onEvent(TestSlowEvent2 event) {
                 count2.incrementAndGet();
                 latch2.countDown();
-    
+                
             }
             
             @Override
@@ -373,26 +377,28 @@ public class NotifyCenterTest {
                 return TestSlowEvent2.class;
             }
         });
-    
+        
         for (int i = 0; i < 3; i++) {
             Assert.assertTrue(NotifyCenter.publishEvent(new TestSlowEvent1()));
             Assert.assertTrue(NotifyCenter.publishEvent(new TestSlowEvent2()));
         }
-    
+        
         ThreadUtils.sleep(2000L);
-    
+        
         latch1.await(3000L, TimeUnit.MILLISECONDS);
         latch2.await(3000L, TimeUnit.MILLISECONDS);
-    
+        
         Assert.assertEquals(3, count1.get());
         Assert.assertEquals(3, count2.get());
-    
+        
     }
     
     private static class TestSlowEvent3 extends SlowEvent {
+    
     }
     
     private static class TestSlowEvent4 extends SlowEvent {
+    
     }
     
     @Test
@@ -408,7 +414,7 @@ public class NotifyCenterTest {
         final CountDownLatch latch2 = new CountDownLatch(3);
         
         NotifyCenter.registerSubscriber(new SmartSubscriber() {
-    
+            
             @Override
             public void onEvent(Event event) {
                 if (event instanceof TestSlowEvent3) {
@@ -421,7 +427,7 @@ public class NotifyCenterTest {
                     latch2.countDown();
                 }
             }
-    
+            
             @Override
             public List<Class<? extends Event>> subscribeTypes() {
                 List<Class<? extends Event>> subTypes = new ArrayList<Class<? extends Event>>();
@@ -447,9 +453,11 @@ public class NotifyCenterTest {
     }
     
     private static class TestSlowEvent5 extends SlowEvent {
+    
     }
     
     private static class TestEvent6 extends Event {
+    
     }
     
     @Test
@@ -501,5 +509,17 @@ public class NotifyCenterTest {
         Assert.assertEquals(3, count1.get());
         Assert.assertEquals(3, count2.get());
         
+    }
+    
+    private static class TestEvent7 extends Event {
+    
+    }
+    
+    @Test
+    public void testPublishEventByNoSubscriber() {
+        
+        for (int i = 0; i < 3; i++) {
+            Assert.assertFalse(NotifyCenter.publishEvent(new TestEvent7()));
+        }
     }
 }

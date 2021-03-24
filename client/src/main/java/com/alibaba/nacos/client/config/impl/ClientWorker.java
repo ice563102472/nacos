@@ -24,13 +24,13 @@ import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.client.config.common.GroupKey;
 import com.alibaba.nacos.client.config.filter.impl.ConfigFilterChainManager;
 import com.alibaba.nacos.client.config.http.HttpAgent;
-import com.alibaba.nacos.client.config.impl.HttpSimpleClient.HttpResult;
 import com.alibaba.nacos.client.config.utils.ContentUtils;
 import com.alibaba.nacos.client.monitor.MetricsMonitor;
 import com.alibaba.nacos.client.naming.utils.CollectionUtils;
 import com.alibaba.nacos.client.utils.LogUtils;
 import com.alibaba.nacos.client.utils.ParamUtil;
 import com.alibaba.nacos.client.utils.TenantUtil;
+import com.alibaba.nacos.common.http.HttpRestResult;
 import com.alibaba.nacos.common.lifecycle.Closeable;
 import com.alibaba.nacos.common.utils.ConvertUtils;
 import com.alibaba.nacos.common.utils.MD5Utils;
@@ -43,18 +43,17 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URLDecoder;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static com.alibaba.nacos.api.common.Constants.CONFIG_TYPE;
 import static com.alibaba.nacos.api.common.Constants.LINE_SEPARATOR;
@@ -161,26 +160,17 @@ public class ClientWorker implements Closeable {
     
     private void removeCache(String dataId, String group) {
         String groupKey = GroupKey.getKey(dataId, group);
-        synchronized (cacheMap) {
-            Map<String, CacheData> copy = new HashMap<String, CacheData>(cacheMap.get());
-            copy.remove(groupKey);
-            cacheMap.set(copy);
-        }
+        cacheMap.remove(groupKey);
         LOGGER.info("[{}] [unsubscribe] {}", this.agent.getName(), groupKey);
-        
-        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.get().size());
+        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.size());
     }
     
     void removeCache(String dataId, String group, String tenant) {
         String groupKey = GroupKey.getKeyTenant(dataId, group, tenant);
-        synchronized (cacheMap) {
-            Map<String, CacheData> copy = new HashMap<String, CacheData>(cacheMap.get());
-            copy.remove(groupKey);
-            cacheMap.set(copy);
-        }
+        cacheMap.remove(groupKey);
         LOGGER.info("[{}] [unsubscribe] {}", agent.getName(), groupKey);
         
-        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.get().size());
+        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.size());
     }
     
     /**
@@ -191,37 +181,27 @@ public class ClientWorker implements Closeable {
      * @return cache data
      */
     public CacheData addCacheDataIfAbsent(String dataId, String group) {
-        CacheData cache = getCache(dataId, group);
-        if (null != cache) {
-            return cache;
-        }
-        
         String key = GroupKey.getKey(dataId, group);
-        cache = new CacheData(configFilterChainManager, agent.getName(), dataId, group);
-        
-        synchronized (cacheMap) {
-            CacheData cacheFromMap = getCache(dataId, group);
-            // multiple listeners on the same dataid+group and race condition,so double check again
-            //other listener thread beat me to set to cacheMap
-            if (null != cacheFromMap) {
-                cache = cacheFromMap;
-                //reset so that server not hang this check
-                cache.setInitializing(true);
-            } else {
-                int taskId = cacheMap.get().size() / (int) ParamUtil.getPerTaskConfigSize();
-                cache.setTaskId(taskId);
-            }
-            
-            Map<String, CacheData> copy = new HashMap<String, CacheData>(cacheMap.get());
-            copy.put(key, cache);
-            cacheMap.set(copy);
+        CacheData cacheData = cacheMap.get(key);
+        if (cacheData != null) {
+            return cacheData;
         }
         
+        cacheData = new CacheData(configFilterChainManager, agent.getName(), dataId, group);
+        // multiple listeners on the same dataid+group and race condition
+        CacheData lastCacheData = cacheMap.putIfAbsent(key, cacheData);
+        if (lastCacheData == null) {
+            int taskId = cacheMap.size() / (int) ParamUtil.getPerTaskConfigSize();
+            lastCacheData = cacheData;
+            lastCacheData.setTaskId(taskId);
+        }
+        // reset so that server not hang this check
+        lastCacheData.setInitializing(true);
+    
         LOGGER.info("[{}] [subscribe] {}", this.agent.getName(), key);
-        
-        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.get().size());
-        
-        return cache;
+    
+        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.size());
+        return lastCacheData;
     }
     
     /**
@@ -233,38 +213,33 @@ public class ClientWorker implements Closeable {
      * @return cache data
      */
     public CacheData addCacheDataIfAbsent(String dataId, String group, String tenant) throws NacosException {
-        CacheData cache = getCache(dataId, group, tenant);
-        if (null != cache) {
-            return cache;
-        }
         String key = GroupKey.getKeyTenant(dataId, group, tenant);
-        synchronized (cacheMap) {
-            CacheData cacheFromMap = getCache(dataId, group, tenant);
-            // multiple listeners on the same dataid+group and race condition,so
-            // double check again
-            // other listener thread beat me to set to cacheMap
-            if (null != cacheFromMap) {
-                cache = cacheFromMap;
-                // reset so that server not hang this check
-                cache.setInitializing(true);
-            } else {
-                cache = new CacheData(configFilterChainManager, agent.getName(), dataId, group, tenant);
-                // fix issue # 1317
-                if (enableRemoteSyncConfig) {
-                    String[] ct = getServerConfig(dataId, group, tenant, 3000L);
-                    cache.setContent(ct[0]);
-                }
-            }
-            
-            Map<String, CacheData> copy = new HashMap<String, CacheData>(this.cacheMap.get());
-            copy.put(key, cache);
-            cacheMap.set(copy);
+        CacheData cacheData = cacheMap.get(key);
+        if (cacheData != null) {
+            return cacheData;
         }
+    
+        cacheData = new CacheData(configFilterChainManager, agent.getName(), dataId, group, tenant);
+        // multiple listeners on the same dataid+group and race condition
+        CacheData lastCacheData = cacheMap.putIfAbsent(key, cacheData);
+        if (lastCacheData == null) {
+            //fix issue # 1317
+            if (enableRemoteSyncConfig) {
+                String[] ct = getServerConfig(dataId, group, tenant, 3000L);
+                cacheData.setContent(ct[0]);
+            }
+            int taskId = cacheMap.size() / (int) ParamUtil.getPerTaskConfigSize();
+            cacheData.setTaskId(taskId);
+            lastCacheData = cacheData;
+        }
+        
+        // reset so that server not hang this check
+        lastCacheData.setInitializing(true);
+        
         LOGGER.info("[{}] [subscribe] {}", agent.getName(), key);
+        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.size());
         
-        MetricsMonitor.getListenConfigCountMonitor().set(cacheMap.get().size());
-        
-        return cache;
+        return lastCacheData;
     }
     
     public CacheData getCache(String dataId, String group) {
@@ -275,7 +250,7 @@ public class ClientWorker implements Closeable {
         if (null == dataId || null == group) {
             throw new IllegalArgumentException();
         }
-        return cacheMap.get().get(GroupKey.getKeyTenant(dataId, group, tenant));
+        return cacheMap.get(GroupKey.getKeyTenant(dataId, group, tenant));
     }
     
     public String[] getServerConfig(String dataId, String group, String tenant, long readTimeout)
@@ -285,29 +260,32 @@ public class ClientWorker implements Closeable {
             group = Constants.DEFAULT_GROUP;
         }
         
-        HttpResult result = null;
+        HttpRestResult<String> result = null;
         try {
-            List<String> params = null;
+            Map<String, String> params = new HashMap<String, String>(3);
             if (StringUtils.isBlank(tenant)) {
-                params = new ArrayList<String>(Arrays.asList("dataId", dataId, "group", group));
+                params.put("dataId", dataId);
+                params.put("group", group);
             } else {
-                params = new ArrayList<String>(Arrays.asList("dataId", dataId, "group", group, "tenant", tenant));
+                params.put("dataId", dataId);
+                params.put("group", group);
+                params.put("tenant", tenant);
             }
             result = agent.httpGet(Constants.CONFIG_CONTROLLER_PATH, null, params, agent.getEncode(), readTimeout);
-        } catch (IOException e) {
+        } catch (Exception ex) {
             String message = String
                     .format("[%s] [sub-server] get server config exception, dataId=%s, group=%s, tenant=%s",
                             agent.getName(), dataId, group, tenant);
-            LOGGER.error(message, e);
-            throw new NacosException(NacosException.SERVER_ERROR, e);
+            LOGGER.error(message, ex);
+            throw new NacosException(NacosException.SERVER_ERROR, ex);
         }
         
-        switch (result.code) {
+        switch (result.getCode()) {
             case HttpURLConnection.HTTP_OK:
-                LocalConfigInfoProcessor.saveSnapshot(agent.getName(), dataId, group, tenant, result.content);
-                ct[0] = result.content;
-                if (result.headers.containsKey(CONFIG_TYPE)) {
-                    ct[1] = result.headers.get(CONFIG_TYPE).get(0);
+                LocalConfigInfoProcessor.saveSnapshot(agent.getName(), dataId, group, tenant, result.getData());
+                ct[0] = result.getData();
+                if (result.getHeader().getValue(CONFIG_TYPE) != null) {
+                    ct[1] = result.getHeader().getValue(CONFIG_TYPE);
                 } else {
                     ct[1] = ConfigType.TEXT.getType();
                 }
@@ -325,13 +303,13 @@ public class ClientWorker implements Closeable {
             case HttpURLConnection.HTTP_FORBIDDEN: {
                 LOGGER.error("[{}] [sub-server-error] no right, dataId={}, group={}, tenant={}", agent.getName(),
                         dataId, group, tenant);
-                throw new NacosException(result.code, result.content);
+                throw new NacosException(result.getCode(), result.getMessage());
             }
             default: {
                 LOGGER.error("[{}] [sub-server-error]  dataId={}, group={}, tenant={}, code={}", agent.getName(),
-                        dataId, group, tenant, result.code);
-                throw new NacosException(result.code,
-                        "http error, code=" + result.code + ",dataId=" + dataId + ",group=" + group + ",tenant="
+                        dataId, group, tenant, result.getCode());
+                throw new NacosException(result.getCode(),
+                        "http error, code=" + result.getCode() + ",dataId=" + dataId + ",group=" + group + ",tenant="
                                 + tenant);
             }
         }
@@ -387,7 +365,7 @@ public class ClientWorker implements Closeable {
      */
     public void checkConfigInfo() {
         // Dispatch taskes.
-        int listenerSize = cacheMap.get().size();
+        int listenerSize = cacheMap.size();
         // Round up the longingTaskCount.
         int longingTaskCount = (int) Math.ceil(listenerSize / ParamUtil.getPerTaskConfigSize());
         if (longingTaskCount > currentLongingTaskCount) {
@@ -405,10 +383,9 @@ public class ClientWorker implements Closeable {
      * @param cacheDatas              CacheDatas for config infomations.
      * @param inInitializingCacheList initial cache lists.
      * @return String include dataId and group (ps: it maybe null).
-     * @throws IOException Exception.
+     * @throws Exception Exception.
      */
-    List<String> checkUpdateDataIds(List<CacheData> cacheDatas, List<String> inInitializingCacheList)
-            throws IOException {
+    List<String> checkUpdateDataIds(List<CacheData> cacheDatas, List<String> inInitializingCacheList) throws Exception {
         StringBuilder sb = new StringBuilder();
         for (CacheData cacheData : cacheDatas) {
             if (!cacheData.isUseLocalConfigInfo()) {
@@ -439,20 +416,16 @@ public class ClientWorker implements Closeable {
      * @return The updated dataId list(ps: it maybe null).
      * @throws IOException Exception.
      */
-    List<String> checkUpdateConfigStr(String probeUpdateString, boolean isInitializingCacheList) throws IOException {
+    List<String> checkUpdateConfigStr(String probeUpdateString, boolean isInitializingCacheList) throws Exception {
         
-        List<String> params = new ArrayList<String>(2);
-        params.add(Constants.PROBE_MODIFY_REQUEST);
-        params.add(probeUpdateString);
-        
-        List<String> headers = new ArrayList<String>(2);
-        headers.add("Long-Pulling-Timeout");
-        headers.add("" + timeout);
+        Map<String, String> params = new HashMap<String, String>(2);
+        params.put(Constants.PROBE_MODIFY_REQUEST, probeUpdateString);
+        Map<String, String> headers = new HashMap<String, String>(2);
+        headers.put("Long-Pulling-Timeout", "" + timeout);
         
         // told server do not hang me up if new initializing cacheData added in
         if (isInitializingCacheList) {
-            headers.add("Long-Pulling-Timeout-No-Hangup");
-            headers.add("true");
+            headers.put("Long-Pulling-Timeout-No-Hangup", "true");
         }
         
         if (StringUtils.isBlank(probeUpdateString)) {
@@ -464,18 +437,19 @@ public class ClientWorker implements Closeable {
             // increase the client's read timeout to avoid this problem.
             
             long readTimeoutMs = timeout + (long) Math.round(timeout >> 1);
-            HttpResult result = agent
+            HttpRestResult<String> result = agent
                     .httpPost(Constants.CONFIG_CONTROLLER_PATH + "/listener", headers, params, agent.getEncode(),
                             readTimeoutMs);
             
-            if (HttpURLConnection.HTTP_OK == result.code) {
+            if (result.ok()) {
                 setHealthServer(true);
-                return parseUpdateDataIdResponse(result.content);
+                return parseUpdateDataIdResponse(result.getData());
             } else {
                 setHealthServer(false);
-                LOGGER.error("[{}] [check-update] get changed dataId error, code: {}", agent.getName(), result.code);
+                LOGGER.error("[{}] [check-update] get changed dataId error, code: {}", agent.getName(),
+                        result.getCode());
             }
-        } catch (IOException e) {
+        } catch (Exception e) {
             setHealthServer(false);
             LOGGER.error("[" + agent.getName() + "] [check-update] get changed dataId exception", e);
             throw e;
@@ -604,7 +578,7 @@ public class ClientWorker implements Closeable {
             List<String> inInitializingCacheList = new ArrayList<String>();
             try {
                 // check failover config
-                for (CacheData cacheData : cacheMap.get().values()) {
+                for (CacheData cacheData : cacheMap.values()) {
                     if (cacheData.getTaskId() == taskId) {
                         cacheDatas.add(cacheData);
                         try {
@@ -634,7 +608,7 @@ public class ClientWorker implements Closeable {
                     }
                     try {
                         String[] ct = getServerConfig(dataId, group, tenant, 3000L);
-                        CacheData cache = cacheMap.get().get(GroupKey.getKeyTenant(dataId, group, tenant));
+                        CacheData cache = cacheMap.get(GroupKey.getKeyTenant(dataId, group, tenant));
                         cache.setContent(ct[0]);
                         if (null != ct[1]) {
                             cache.setType(ct[1]);
@@ -684,8 +658,7 @@ public class ClientWorker implements Closeable {
     /**
      * groupKey -> cacheData.
      */
-    private final AtomicReference<Map<String, CacheData>> cacheMap = new AtomicReference<Map<String, CacheData>>(
-            new HashMap<String, CacheData>());
+    private final ConcurrentHashMap<String, CacheData> cacheMap = new ConcurrentHashMap<String, CacheData>();
     
     private final HttpAgent agent;
     
