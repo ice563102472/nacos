@@ -24,9 +24,9 @@ import com.alibaba.nacos.auth.model.Permission;
 import com.alibaba.nacos.auth.parser.ResourceParser;
 import com.alibaba.nacos.common.utils.ExceptionUtil;
 import com.alibaba.nacos.core.code.ControllerMethodsCache;
+import com.alibaba.nacos.sys.env.Constants;
 import com.alibaba.nacos.core.utils.Loggers;
 import com.alibaba.nacos.core.utils.WebUtils;
-import com.alibaba.nacos.sys.env.Constants;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -100,9 +100,7 @@ public class AuthFilter implements Filter {
             Method method = methodsCache.getMethod(req);
             
             if (method == null) {
-                // For #4701, Only support register API.
-                resp.sendError(HttpServletResponse.SC_NOT_FOUND,
-                        "Not found mehtod for path " + req.getMethod() + " " + req.getRequestURI());
+                chain.doFilter(request, response);
                 return;
             }
             

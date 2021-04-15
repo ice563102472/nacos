@@ -19,7 +19,7 @@
     <parent>
         <artifactId>nacos-all</artifactId>
         <groupId>com.alibaba.nacos</groupId>
-        <version>1.4.1</version>
+        <version>${revision}</version>
     </parent>
     
     <modelVersion>4.0.0</modelVersion>
@@ -50,16 +50,6 @@
                     <artifactId>nacos-cmdb</artifactId>
                 </exclusion>
             </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-all</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.hamcrest</groupId>
-            <artifactId>hamcrest-all</artifactId>
-            <scope>test</scope>
         </dependency>
     </dependencies>
     
